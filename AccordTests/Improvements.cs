@@ -1,42 +1,11 @@
-﻿// Accord.NET Sample Applications
-// http://accord-framework.net
-//
-// Copyright © 2009-2017, César Souza
-// All rights reserved. 3-BSD License:
-//
-//   Redistribution and use in source and binary forms, with or without
-//   modification, are permitted provided that the following conditions are met:
-//
-//      * Redistributions of source code must retain the above copyright
-//        notice, this list of conditions and the following disclaimer.
-//
-//      * Redistributions in binary form must reproduce the above copyright
-//        notice, this list of conditions and the following disclaimer in the
-//        documentation and/or other materials provided with the distribution.
-//
-//      * Neither the name of the Accord.NET Framework authors nor the
-//        names of its contributors may be used to endorse or promote products
-//        derived from this software without specific prior written permission.
-// 
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-//  ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-//  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
-//  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-//  (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-//  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-//  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-//  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-//  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
-
-
-using Accord.Math;
-using System.Runtime.CompilerServices;
-
-namespace SampleApp
+﻿namespace SampleApp
 {
-    public static class Blah
+    using Accord;
+    using Accord.Math;
+    using System;
+    using System.Runtime.CompilerServices;
+
+    public static class Improvements
     {
         #region DotAndDot
 
@@ -54,6 +23,59 @@ namespace SampleApp
                 s2 += rowVector[i] * s;
             }
             return s2;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static double DotAndDotFaster(this double[] rowVector, double[,] matrix, double[] columnVector)
+        {
+            int cols = matrix.Columns();
+            int rows = matrix.Rows();
+
+            double result = 0;
+
+            fixed (double* r = rowVector)
+            fixed (double* a = matrix)
+            fixed (double* c = columnVector)
+            {
+                double* pa1 = a;
+                double* pa2 = a + cols;
+                double* pr = r;
+
+                // Process rows two at a time
+                for (int i = 0; i < rows / 2; i++)
+                {
+                    double sum1 = 0, sum2 = 0;
+                    double* pc = c;
+
+                    for (int j = 0; j < cols; j++)
+                    {
+                        sum1 += (*pa1++) * (*pc);
+                        sum2 += (*pa2++) * (*pc);
+                        pc++;
+                    }
+
+                    result += (*pr++) * sum1;
+                    result += (*pr++) * sum2;
+
+                    // Now we skip a row
+                    pa1 = pa2;
+                    pa2 += cols;
+                }
+
+                // Process the remainder
+                for (int i = 0; i < rows % 2; i++)
+                {
+                    double sum = 0;
+                    double* pc = c;
+
+                    for (int j = 0; j < cols; j++)
+                        sum += (*pa1++) * (*pc++);
+
+                    result += (*pr++) * sum;
+                }
+            }
+
+            return result;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -134,43 +156,54 @@ namespace SampleApp
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe public static void MVCLoopUnrolling2(this double[,] matrix, double[] col, double[] res)
+        unsafe public static double[] MVCLoopUnrolling2(this double[,] matrix, double[] columnVector, double[] result)
         {
             int cols = matrix.Columns();
             int rows = matrix.Rows();
 
-            fixed (double* aBase = &matrix[0, 0])
-            fixed (double* xBase = &col[0])
-            fixed (double* r = &res[0])
+            fixed (double* a = matrix)
+            fixed (double* x = columnVector)
+            fixed (double* r = result)
             {
-                double* a1 = aBase;
-                double* a2 = aBase + cols;
-                double* ypos = r;
+                double* pa1 = a;
+                double* pa2 = a + cols;
+                double* pr = r;
 
+                // Process rows two at a time
                 for (int i = 0; i < rows / 2; i++)
                 {
-                    double ytemp1 = 0;
-                    double ytemp2 = 0;
-                    double* x = xBase;
+                    double sum1 = 0, sum2 = 0;
+                    double* px = x;
 
                     for (int j = 0; j < cols; j++)
                     {
-                        ytemp1 += *x * (*a1++);
-                        ytemp2 += *x * (*a2++);
-                        x++;
+                        sum1 += (double)((double)(*pa1++) * (double)(*px));
+                        sum2 += (double)((double)(*pa2++) * (double)(*px));
+                        px++;
                     }
 
-                    *ypos = ytemp1;
-                    ypos++;
+                    *pr++ = (double)sum1;
+                    *pr++ = (double)sum2;
 
-                    *ypos = ytemp2;
-                    ypos++;
+                    // Now we skip a row
+                    pa1 = pa2;
+                    pa2 += cols;
+                }
 
-                    // skip next row
-                    a1 += cols;
-                    a2 += cols;
+                // Process the remainder
+                for (int i = 0; i < rows % 2; i++)
+                {
+                    double sum = 0;
+                    double* px = x;
+
+                    for (int j = 0; j < cols; j++)
+                        sum += (double)((double)(*pa1++) * (double)(*px++));
+
+                    *pr = (double)sum;
                 }
             }
+
+            return result;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -345,27 +378,28 @@ namespace SampleApp
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        unsafe public static void VM7(this double[,] a, double[] x, double[] result)
+        public unsafe static void VM7(this double[,] matrix, double[] rowVector, double[] result)
         {
-            int cols = a.Columns();
-            int rows = a.Rows();
+            int cols = matrix.Columns();
+            int rows = matrix.Rows();
 
-            fixed (double* A = &a[0, 0])
-            fixed (double* X = &x[0])
-            fixed (double* R = &result[0])
+            fixed (double* a = matrix)
+            fixed (double* x = rowVector)
+            fixed (double* r = result)
             {
-                double* pa1 = A;
-                double* pa2 = A + cols;
+                double* pa1 = a;
+                double* pa2 = a + cols;
 
-                double* px = X;
-                double* pr = R;
+                double* px = x;
+                double* pr = r;
 
                 for (int j = 0; j < cols; j++)
                     *pr++ = 0;
 
+                // Process rows two at a time
                 for (int i = 0; i < rows / 2; i++)
                 {
-                    pr = R;
+                    pr = r;
                     double x1 = *px++;
                     double x2 = *px++;
                     for (int j = 0; j < cols; j++)
@@ -375,17 +409,18 @@ namespace SampleApp
                         pr++;
                     }
 
-                    // skip next row
+                    // Now we skip a row
                     pa1 = pa2;
                     pa2 += cols;
                 }
 
+                // Process the remainder
                 for (int i = 0; i < rows % 2; i++)
                 {
-                    pr = R;
-                    double xval = *px++;
+                    pr = r;
+                    double x1 = *px++;
                     for (int j = 0; j < cols; j++)
-                        *pr++ += xval * (*pa1++);
+                        *pr++ += x1 * (*pa1++);
                 }
             }
         }
@@ -400,10 +435,10 @@ namespace SampleApp
             fixed (double* xBase = &row[0])
             fixed (double* rBase = &res[0])
             {
-                double* a1 = aBase + 0*cols;
-                double* a2 = aBase + 1*cols;
-                double* a3 = aBase + 2*cols;
-                double* a4 = aBase + 3*cols;
+                double* a1 = aBase + 0 * cols;
+                double* a2 = aBase + 1 * cols;
+                double* a3 = aBase + 2 * cols;
+                double* a4 = aBase + 3 * cols;
 
                 double* x = xBase;
                 double* r = rBase;
@@ -443,6 +478,157 @@ namespace SampleApp
                 }
             }
         }
+
+        #endregion
+
+        #region Outer
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static double[,] OuterNew(this double[] a, double[] b, double[,] result)
+        {
+            fixed (double* A = a)
+            fixed (double* B = b)
+            fixed (double* R = result)
+            {
+                double* pa = A;
+                double* pr = R;
+
+                for (int i = 0; i < a.Length; i++)
+                {
+                    double x = *pa++;
+                    double* pb = B;
+
+                    for (int j = 0; j < b.Length; j++)
+                        *pr++ = x * (*pb++);
+                }
+            }
+
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static double[,] OuterNew2(this double[] a, double[] b, double[,] result)
+        {
+            fixed (double* R = result)
+            {
+                double* pr = R;
+                for (int i = 0; i < a.Length; i++)
+                {
+                    double x = a[i];
+                    for (int j = 0; j < b.Length; j++)
+                        *pr++ = x * b[j];
+                }
+            }
+            return result;
+        }
+
+        #endregion
+
+        #region Kronecker
+
+        public static unsafe double[][] Kronecker(this double[][] a, double[,] b, double[][] result)
+        {
+            int arows = a.Rows();
+            int acols = a.Columns();
+            int brows = b.Rows();
+            int bcols = b.Columns();
+
+            fixed (double* B = b)
+                for (int i = 0; i < arows; i++)
+                    for (int j = 0; j < acols; j++)
+                    {
+                        double aval = (double)a[i][j];
+                        double* pb = B;
+
+                        for (int k = 0; k < brows; k++)
+                            for (int l = 0; l < bcols; l++)
+                                result[i * brows + k][j * bcols + l] = (double)(aval * (*pb++));
+                    }
+
+            return result;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static double[] KronNew2(this double[] a, double[] b, double[] result)
+        {
+            fixed (double* R = result)
+            {
+                double* pr = R;
+                for (int i = 0; i < a.Length; i++)
+                {
+                    double x = a[i];
+                    for (int j = 0; j < b.Length; j++)
+                        *pr++ = (double)((double)x * (double)b[j]);
+                }
+            }
+            return result;
+        }
+
+        #endregion
+
+
+        public static double[] DotNew(this double[] rowVector, double[][] matrix, double[] result)
+        {
+            for (int j = 0; j < result.Length; j++)
+            {
+                double s = 0;
+                for (int k = 0; k < rowVector.Length; k++)
+                    s += rowVector[k] * matrix[k][j];
+                result[j] = s;
+            }
+
+            return result;
+        }
+
+        #region Transpose and Dot
+
+        public static unsafe double[,] TransposeAndDotNew(this double[,] a, double[,] b, double[,] result)
+        {
+            int n = a.Rows();
+            int m = a.Columns();
+            int p = b.Columns();
+
+#if DEBUG
+            if (n != b.Rows() || result.Rows() > m || result.Columns() > p)
+                throw new DimensionMismatchException();
+            var C = a.Transpose().To<double[,]>().Dot(b.To<double[,]>());
+#endif
+
+            fixed (double* R = result)
+            fixed (double* B = b)
+            fixed (double* ptemp = new double[p])
+            {
+                double* pr = R;
+
+                for (int i = 0; i < m; i++)
+                {
+                    double* pt = ptemp;
+                    double* pb = B;
+
+                    for (int k = 0; k < n; k++)
+                    {
+                        double aval = a[k, i];
+                        for (int j = 0; j < p; j++)
+                            *pt++ += aval * (*pb++);
+                        pt = ptemp;
+                    }
+
+                    for (int j = 0; j < p; j++)
+                    {
+                        *pr++ = *pt;
+                        *pt++ = 0;
+                    }
+                }
+            }
+
+#if DEBUG
+            if (!C.IsEqual(result.To<double[,]>(), 1e-4))
+                throw new Exception();
+#endif
+
+            return result;
+        }
+
         #endregion
     }
 }
