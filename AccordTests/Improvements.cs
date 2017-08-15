@@ -684,12 +684,6 @@
 #endif
         public static unsafe double[][] DotNew(this double[,] a, double[][] b, double[][] result)
         {
-#if DEBUG
-            if (a.Columns() != b.Length || result.Length > a.Length || result.Columns() > b.Columns())
-                throw new DimensionMismatchException();
-            var C = Matrix.CreateAs(result).To<double[,]>();
-            C = Dot(a.To<double[,]>(), b.ToMatrix().To<double[,]>(), C);
-#endif
             int N = result.Length;
             int K = a.Columns();
             int M = result.Columns();
@@ -711,10 +705,7 @@
                         result[i][j] = (double)s;
                     }
                 }
-#if DEBUG
-            if (!Matrix.IsEqual(C, result.ToMatrix().To<double[,]>(), 1e-4))
-                throw new Exception();
-#endif
+
             return result;
         }
 

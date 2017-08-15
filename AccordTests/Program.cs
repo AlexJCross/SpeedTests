@@ -74,7 +74,7 @@ namespace SampleApp
 
                 if (true)
                 {
-
+                    
                 {
                     #region Jit the code
 
@@ -278,10 +278,10 @@ namespace SampleApp
                     for (int i = 0; i < 2; i++)
                     {
                         check = NbyM.Dot(mat);
-                        var clone = check.ToJagged();
-                        MbyN.DotNew(mat, check);
+                        double[,] clone = check.ToMatrix();
+                        NbyM.DotNew(mat, check);
 
-                        if (!check.IsEqual(clone, 1e-10))
+                        if (!check.IsEqual(clone, 1e-8))
                         {
                             throw new Exception();
                         }
@@ -648,7 +648,7 @@ namespace SampleApp
                 Size *= 2;
                 Size2 = Size;
                 Size3 = Size;
-                N /= 4;
+                N /= 8;
             }
 
             System.IO.File.WriteAllText(@"Benchmarking.txt",
@@ -661,7 +661,8 @@ namespace SampleApp
                 sb7.ToString() + Environment.NewLine +
                 sb8.ToString() + Environment.NewLine +
                 sb9.ToString() + Environment.NewLine +
-                sb10.ToString());
+                sb10.ToString() + Environment.NewLine +
+                sb11.ToString());
         }
 
         public static void Log(string label = null)
