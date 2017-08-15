@@ -566,6 +566,158 @@
 
         #endregion
 
+        public static double[][] DotWithTransposedNew(this double[][] a, double[][] b, double[][] result)
+        {
+            int n = a.Columns();
+            int m = a.Rows();
+            int p = b.Rows();
+
+            for (int i = 0; i < m; i++)
+            {
+                double[] arow = a[i];
+                for (int j = 0; j < p; j++)
+                {
+                    double sum = 0;
+                    double[] brow = b[j];
+                    for (int k = 0; k < arow.Length; k++)
+                        sum += arow[k] * brow[k];
+                    result[i][j] = sum;
+                }
+            }
+
+            return result;
+        }
+
+
+        public static double[][] DotWithTransposedNew1(this double[][] a, double[][] b, double[][] result)
+        {
+            for (int i = 0; i < a.Length; i++)
+            {
+                double[] arow = a[i];
+                for (int j = 0; j < b.Length; j++)
+                {
+                    double sum = 0;
+                    double[] brow = b[j];
+                    for (int k = 0; k < arow.Length; k++)
+                        sum += arow[k] * brow[k];
+                    result[i][j] = sum;
+                }
+            }
+
+            return result;
+        }
+
+
+        public static unsafe double[][] DotWithTransposedNew1(this double[][] a, double[,] b, double[][] result)
+        {
+            int n = b.Rows();
+
+            fixed (double* B = b)
+            for (int i = 0; i < a.Length; i++)
+            {
+                double* pb = B;
+                double[] arow = a[i];
+                for (int j = 0; j < n; j++)
+                {
+                    double sum = 0;
+                    for (int k = 0; k < arow.Length; k++)
+                        sum += arow[k] * (*pb++);
+                    result[i][j] = sum;
+                }
+            }
+
+            return result;
+        }
+
+
+        public static unsafe double[][] DotWithTransposedNew1(this double[,] a, double[][] b, double[][] result)
+        {
+            int n = a.Rows();
+
+            fixed (double* A = a) 
+            for (int j = 0; j < b.Length; j++)
+            {
+                double* pa = A;
+                for (int i = 0; i < n; i++)
+                {
+                    double sum = 0;
+                    double[] brow = b[j];
+                    for (int k = 0; k < brow.Length; k++)
+                        sum += (*pa++) * brow[k];
+                    result[i][j] = sum;
+                }
+            }
+
+            return result;
+        }
+
+
+
+
+        public static unsafe double[][] DotWithTransposedNew2(this double[][] a, double[][] b, double[][] result)
+        {
+            int n = a.Columns();
+            int m = a.Rows();
+            int p = b.Rows();
+
+            for (int i = 0; i < m; i++)
+            {
+                fixed (double* AR = a[i])
+                    for (int j = 0; j < p; j++)
+                    {
+                        double sum = 0;
+                        double* pa = AR;
+                        double[] brow = b[j];
+
+                        for (int k = 0; k < brow.Length; k++)
+                            sum += (*pa++) * brow[k];
+
+                        result[i][j] = sum;
+                    }
+            }
+
+            return result;
+        }
+
+#if NET45 || NET46 || NET462 || NETSTANDARD
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+        public static unsafe double[][] DotNew(this double[,] a, double[][] b, double[][] result)
+        {
+#if DEBUG
+            if (a.Columns() != b.Length || result.Length > a.Length || result.Columns() > b.Columns())
+                throw new DimensionMismatchException();
+            var C = Matrix.CreateAs(result).To<double[,]>();
+            C = Dot(a.To<double[,]>(), b.ToMatrix().To<double[,]>(), C);
+#endif
+            int N = result.Length;
+            int K = a.Columns();
+            int M = result.Columns();
+
+            var t = new double[K];
+
+            fixed (double* A = a)
+                for (int j = 0; j < M; j++)
+                {
+                    for (int k = 0; k < t.Length; k++)
+                        t[k] = b[k][j];
+
+                    double* pa = A;
+                    for (int i = 0; i < N; i++)
+                    {
+                        double s = (double)0;
+                        for (int k = 0; k < t.Length; k++)
+                            s += (double)((double)(*pa++) * (double)t[k]);
+                        result[i][j] = (double)s;
+                    }
+                }
+#if DEBUG
+            if (!Matrix.IsEqual(C, result.ToMatrix().To<double[,]>(), 1e-4))
+                throw new Exception();
+#endif
+            return result;
+        }
+
 
         public static double[] DotNew(this double[] rowVector, double[][] matrix, double[] result)
         {
@@ -613,6 +765,7 @@
                         pt = ptemp;
                     }
 
+                    // Update the results row and clear the cache
                     for (int j = 0; j < p; j++)
                     {
                         *pr++ = *pt;
@@ -630,5 +783,30 @@
         }
 
         #endregion
+
+        public static unsafe double[][] Dot(this long[,] a, double[][] b, double[][] result)
+        {
+            int N = result.Length;
+            int K = a.Columns();
+            int M = result.Columns();
+
+            var t = new double[K];
+            fixed(long* A = a)
+            for (int j = 0; j < M; j++)
+            {
+                for (int k = 0; k < t.Length; k++)
+                    t[k] = b[k][j];
+
+                long* pa = A;
+                for (int i = 0; i < N; i++)
+                {
+                    double s = (double)0;
+                    for (int k = 0; k < t.Length; k++)
+                        s += (double)((double)(*pa++) * (double)t[k]);
+                    result[i][j] = (double)s;
+                }
+            }
+            return result;
+        }
     }
 }
